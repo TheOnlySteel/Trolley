@@ -88,8 +88,9 @@ struct Box {
   bool hit(int px, int py) const { return px >= x && px < x + w && py >= y && py < y + h; }
 };
 const Box BOX_BEGIN  {  84, 158, 152, 46 };
-const Box BOX_SOUND  {  26, 208, 124, 26 };
-const Box BOX_HAPTIC { 170, 208, 124, 26 };
+const Box BOX_POWER  {   0,   0,  60,  48 };   // top-left corner
+const Box BOX_SOUND  {   0, 192,  70,  48 };   // bottom-left corner
+const Box BOX_HAPTIC { 250, 192,  70,  48 };   // bottom-right corner
 const Box BOX_RESUME {  76, 128,  98, 42 };
 const Box BOX_END    { 186, 128,  60, 42 };
 
@@ -163,6 +164,45 @@ void drawOrb(int ox, int oy, float r, uint16_t col) {
                     (int)(r * 0.32f), lerpCol(col, COL_TEXT, 0.30f));
 }
 
+// ---------------- corner icons (drawn with primitives) ----------------
+// Arc spans that cross 0 degrees are split in two, since wrap-around
+// support varies between LovyanGFX versions.
+
+void drawPowerIcon(int x, int y) {
+  canvas.fillArc(x, y, 11, 9, 305, 360, COL_DIM);   // ring, gap at top
+  canvas.fillArc(x, y, 11, 9, 0, 235, COL_DIM);
+  canvas.fillRect(x - 1, y - 13, 3, 9, COL_DIM);    // stem through the gap
+}
+
+void drawSoundIcon(int x, int y, bool on) {
+  uint16_t col = on ? lerpCol(COL_INHALE, COL_DIM, 0.45f) : COL_FAINT;
+  canvas.fillRect(x - 11, y - 4, 5, 9, col);                       // driver box
+  canvas.fillTriangle(x - 8, y, x - 1, y - 8, x - 1, y + 8, col);  // cone
+  if (on) {
+    canvas.fillArc(x + 2, y, 6, 5, 305, 360, col);   // inner wave
+    canvas.fillArc(x + 2, y, 6, 5, 0, 55, col);
+    canvas.fillArc(x + 2, y, 11, 10, 305, 360, col); // outer wave
+    canvas.fillArc(x + 2, y, 11, 10, 0, 55, col);
+  } else {
+    canvas.drawLine(x - 12, y + 11, x + 12, y - 11, COL_DIM);
+    canvas.drawLine(x - 11, y + 11, x + 13, y - 11, COL_DIM);
+  }
+}
+
+void drawHapticIcon(int x, int y, bool on) {
+  uint16_t col = on ? lerpCol(COL_INHALE, COL_DIM, 0.45f) : COL_FAINT;
+  canvas.drawRoundRect(x - 5, y - 9, 11, 19, 3, col);  // phone body, 2px stroke
+  canvas.drawRoundRect(x - 4, y - 8, 9, 17, 2, col);
+  if (on) {
+    canvas.fillArc(x, y, 13, 12, 125, 235, col);       // left wave
+    canvas.fillArc(x, y, 13, 12, 305, 360, col);       // right wave
+    canvas.fillArc(x, y, 13, 12, 0, 55, col);
+  } else {
+    canvas.drawLine(x - 14, y + 11, x + 12, y - 11, COL_DIM);
+    canvas.drawLine(x - 13, y + 11, x + 13, y - 11, COL_DIM);
+  }
+}
+
 // ---------------- screens ----------------
 void drawHome() {
   canvas.fillScreen(COL_BG);
@@ -199,16 +239,9 @@ void drawHome() {
   canvas.setTextColor(COL_DARKTX);
   canvas.drawString("Begin", 160, BOX_BEGIN.y + BOX_BEGIN.h / 2 - 1);
 
-  auto toggle = [](const Box& b, const char* name, bool on) {
-    canvas.drawRoundRect(b.x, b.y, b.w, b.h, 13,
-                         on ? lerpCol(COL_INHALE, COL_BG, 0.35f) : COL_FAINT);
-    canvas.setFont(&fonts::FreeSans9pt7b);
-    canvas.setTextColor(on ? COL_TEXT : COL_DIM);
-    canvas.drawString(String(name) + (on ? " on" : " off"),
-                      b.x + b.w / 2, b.y + b.h / 2);
-  };
-  toggle(BOX_SOUND,  "Sound",   soundOn);
-  toggle(BOX_HAPTIC, "Haptics", hapticOn);
+  drawPowerIcon(22, 20);
+  drawSoundIcon(24, 216, soundOn);
+  drawHapticIcon(296, 216, hapticOn);
 
   canvas.pushSprite(0, 0);
 }
@@ -254,38 +287,46 @@ void drawRunFrame(uint32_t el, bool dimmed) {
 
   drawOrb(CX, CY, r, col);
 
-  // guide ring + per-phase progress sweep with a bright tip
+  // Ring "fills" like lungs: anchored at the bottom, it grows up both
+  // sides and closes at the top on inhale, then splits at the top and
+  // drains back down on exhale. Eased with the orb so motion is
+  // continuous across phase changes. Arcs that would cross 0 degrees
+  // are split for LovyanGFX compatibility.
   canvas.fillArc(CX, CY, R_RING + 1, R_RING - 1, 0, 360, COL_FAINT);
-  if (prog > 0.003f && !dimmed) {
-    float aEnd = 270.0f + 360.0f * prog;
-    canvas.fillArc(CX, CY, R_RING + 3, R_RING - 3, 270.0f, aEnd,
-                   lerpCol(col, COL_BG, 0.25f));
-    float rad = aEnd * DEG_TO_RAD;
-    canvas.fillCircle(CX + (int)(cosf(rad) * R_RING),
-                      CY + (int)(sinf(rad) * R_RING), 5, col);
+  float f = ph.grow ? eased : 1.0f - eased;   // fraction of ring present
+  if (f > 0.004f && !dimmed) {
+    uint16_t ringCol = lerpCol(col, COL_BG, 0.2f);
+    float half = 180.0f * f;
+    canvas.fillArc(CX, CY, R_RING + 3, R_RING - 3, 90.0f, 90.0f + half, ringCol);
+    float a0 = 90.0f - half;
+    if (a0 >= 0.0f) {
+      canvas.fillArc(CX, CY, R_RING + 3, R_RING - 3, a0, 90.0f, ringCol);
+    } else {
+      canvas.fillArc(CX, CY, R_RING + 3, R_RING - 3, 0.0f, 90.0f, ringCol);
+      canvas.fillArc(CX, CY, R_RING + 3, R_RING - 3, 360.0f + a0, 360.0f, ringCol);
+    }
+    if (f < 0.996f) {   // bright dots where the ring is growing/receding
+      float rad = a0 * DEG_TO_RAD;
+      canvas.fillCircle(CX + (int)(cosf(rad) * R_RING),
+                        CY + (int)(sinf(rad) * R_RING), 4, col);
+      rad = (90.0f + half) * DEG_TO_RAD;
+      canvas.fillCircle(CX + (int)(cosf(rad) * R_RING),
+                        CY + (int)(sinf(rad) * R_RING), 4, col);
+    }
   }
 
   canvas.setTextDatum(middle_center);
   canvas.setFont(&fonts::FreeSansBold12pt7b);
   canvas.setTextColor(COL_TEXT);
-  canvas.drawString(ph.name, CX, CY - 12);
-  canvas.setFont(&fonts::FreeSansBold18pt7b);
-  canvas.drawString(String((int)ceilf((phMs - el) / 1000.0f)), CX, CY + 18);
+  canvas.drawString(ph.name, CX, CY);
 
+  // time remaining (or elapsed when open-ended), small and dim
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setTextColor(COL_DIM);
-  canvas.setTextDatum(top_left);
-  canvas.drawString("breath " + String(breathCount + 1), 10, 8);
   canvas.setTextDatum(top_right);
   uint32_t now = dimmed ? pausedAt : millis();
   uint32_t sel = now - sessionStart;
-  if (sessionMs) {
-    canvas.drawString(fmtTime(sel >= sessionMs ? 0 : sessionMs - sel), 310, 8);
-    float sp = fminf(1.0f, (float)sel / sessionMs);
-    canvas.fillRect(0, 237, (int)(320 * sp), 3, lerpCol(COL_BG, col, 0.55f));
-  } else {
-    canvas.drawString(fmtTime(sel), 310, 8);
-  }
+  canvas.drawString(fmtTime(sessionMs ? (sel >= sessionMs ? 0 : sessionMs - sel) : sel), 310, 8);
 }
 
 void drawPause() {
@@ -423,6 +464,17 @@ void homeTouch(int x, int y) {
   if (BOX_BEGIN.hit(x, y))  { startCountdown(); return; }
   if (BOX_SOUND.hit(x, y))  { soundOn = !soundOn;  savePrefs(); if (soundOn) M5.Speaker.tone(660, 40); return; }
   if (BOX_HAPTIC.hit(x, y)) { hapticOn = !hapticOn; savePrefs(); buzz(40); return; }
+  if (BOX_POWER.hit(x, y)) {
+    canvas.fillScreen(COL_BG);
+    canvas.setTextDatum(middle_center);
+    canvas.setFont(&fonts::FreeSans9pt7b);
+    canvas.setTextColor(COL_DIM);
+    canvas.drawString("see you", 160, 120);
+    canvas.pushSprite(0, 0);
+    delay(450);
+    M5.Power.powerOff();
+    return;
+  }
 }
 
 // ---------------- arduino entry points ----------------
@@ -490,9 +542,9 @@ void loop() {
       break;
   }
 
-  // ~30 fps pacing
+  // pace frames; in practice the display push is the limiter (~30 fps)
   static uint32_t nextFrame = 0;
   uint32_t now = millis();
   if (now < nextFrame) delay(nextFrame - now);
-  nextFrame = millis() + 33;
+  nextFrame = millis() + 25;
 }
