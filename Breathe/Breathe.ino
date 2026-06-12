@@ -480,17 +480,9 @@ void setup() {
   M5.Display.setBrightness(BRIGHT_UI);
   M5.Speaker.setVolume(100);
 
-  // Raise the display SPI clock from M5GFX's 40 MHz default to 80 MHz.
-  // Pushing the frame over SPI is what limits the frame rate (~30 ms
-  // per frame at 40 MHz); the Core2's ILI9342C handles 80 MHz writes,
-  // halving that. If you ever see visual glitches, set this back to
-  // 40000000 (the ESP32 divider allows nothing in between).
-  {
-    auto bus = (lgfx::Bus_SPI*)M5.Display.getPanel()->getBus();
-    auto bcfg = bus->config();
-    bcfg.freq_write = 80000000;
-    bus->config(bcfg);
-  }
+  // Note: this panel does not tolerate overclocking the display SPI bus
+  // to 80 MHz (the screen turns to static), so it stays at the M5GFX
+  // default of 40 MHz. That caps full-screen pushes at ~30 fps.
 
   initChipBoxes();
 
@@ -549,8 +541,7 @@ void loop() {
       break;
   }
 
-  // pace frames; with the 80 MHz bus the push takes ~15 ms, so this
-  // runs at roughly 45-50 fps
+  // pace frames; in practice the display push is the limiter (~30 fps)
   static uint32_t nextFrame = 0;
   uint32_t now = millis();
   if (now < nextFrame) delay(nextFrame - now);
