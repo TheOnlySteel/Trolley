@@ -87,7 +87,7 @@ struct Box {
   int x, y, w, h;
   bool hit(int px, int py) const { return px >= x && px < x + w && py >= y && py < y + h; }
 };
-const Box BOX_BEGIN  {  84, 158, 152, 46 };
+const Box BOX_BEGIN  {  84, 172, 152, 46 };
 const Box BOX_POWER  {   0,   0,  60,  48 };   // top-left corner
 const Box BOX_SOUND  {   0, 192,  70,  48 };   // bottom-left corner
 const Box BOX_HAPTIC { 250, 192,  70,  48 };   // bottom-right corner
@@ -215,11 +215,7 @@ void drawHome() {
   canvas.setTextDatum(middle_center);
   canvas.setFont(&fonts::FreeSansBold24pt7b);
   canvas.setTextColor(COL_TEXT);
-  canvas.drawString("Breathe", 160, 46);
-
-  canvas.setFont(&fonts::FreeSans9pt7b);
-  canvas.setTextColor(COL_DIM);
-  canvas.drawString("coherent breathing - 5.5s in / 5.5s out", 160, 78);
+  canvas.drawString("Breathe", 160, 54);
 
   for (int i = 0; i < N_DUR; ++i) {
     const Box& b = CHIP_BOX[i];
@@ -235,9 +231,8 @@ void drawHome() {
   canvas.drawString("minutes", 160, 148);
 
   canvas.fillRoundRect(BOX_BEGIN.x, BOX_BEGIN.y, BOX_BEGIN.w, BOX_BEGIN.h, 23, COL_INHALE);
-  canvas.setFont(&fonts::FreeSansBold18pt7b);
-  canvas.setTextColor(COL_DARKTX);
-  canvas.drawString("Begin", 160, BOX_BEGIN.y + BOX_BEGIN.h / 2 - 1);
+  int py = BOX_BEGIN.y + BOX_BEGIN.h / 2;   // play symbol, nudged right to look centred
+  canvas.fillTriangle(153, py - 11, 153, py + 11, 175, py, COL_DARKTX);
 
   drawPowerIcon(22, 20);
   drawSoundIcon(24, 216, soundOn);
@@ -485,6 +480,18 @@ void setup() {
   M5.Display.setBrightness(BRIGHT_UI);
   M5.Speaker.setVolume(100);
 
+  // Raise the display SPI clock from M5GFX's 40 MHz default to 80 MHz.
+  // Pushing the frame over SPI is what limits the frame rate (~30 ms
+  // per frame at 40 MHz); the Core2's ILI9342C handles 80 MHz writes,
+  // halving that. If you ever see visual glitches, set this back to
+  // 40000000 (the ESP32 divider allows nothing in between).
+  {
+    auto bus = (lgfx::Bus_SPI*)M5.Display.getPanel()->getBus();
+    auto bcfg = bus->config();
+    bcfg.freq_write = 80000000;
+    bus->config(bcfg);
+  }
+
   initChipBoxes();
 
   prefs.begin("breathe", false);
@@ -542,9 +549,10 @@ void loop() {
       break;
   }
 
-  // pace frames; in practice the display push is the limiter (~30 fps)
+  // pace frames; with the 80 MHz bus the push takes ~15 ms, so this
+  // runs at roughly 45-50 fps
   static uint32_t nextFrame = 0;
   uint32_t now = millis();
   if (now < nextFrame) delay(nextFrame - now);
-  nextFrame = millis() + 25;
+  nextFrame = millis() + 16;
 }

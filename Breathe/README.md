@@ -4,9 +4,11 @@ A polished coherent-breathing timer for the M5Stack Core2 (5.5 s inhale / 5.5 s 
 
 ## Features
 
-- **Home screen** — session length chips (1 / 3 / 5 / 10 min or Open-ended), Begin button,
+- **Home screen** — session length chips (1 / 3 / 5 / 10 min or Open-ended), a play button,
   corner icon toggles for Sound and Haptics (settings persist across power-off via NVS),
   a power-off button top-left, battery readout top-right.
+- **Fast rendering** — the display SPI bus is raised from 40 MHz to 80 MHz at startup,
+  roughly doubling the frame rate (~45-50 fps full-screen, flicker-free).
 - **3-2-1 countdown** to settle in before the first breath (tap to cancel).
 - **Session screen** — numberless and minimal: a glowing layered orb with eased grow/shrink
   motion, color crossfade between inhale (teal) and exhale (periwinkle), and a ring that
