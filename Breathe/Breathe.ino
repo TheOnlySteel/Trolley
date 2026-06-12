@@ -93,10 +93,17 @@ const Box BOX_HAPTIC { 170, 208, 124, 26 };
 const Box BOX_RESUME {  76, 128,  98, 42 };
 const Box BOX_END    { 186, 128,  60, 42 };
 
-Box chipBox(int i) {
+// Chip boxes are a plain array (filled in setup) rather than a function
+// returning Box: the Arduino IDE hoists auto-generated prototypes above
+// the struct definition, which breaks compilation.
+Box CHIP_BOX[N_DUR];
+
+void initChipBoxes() {
   int x = 21;
-  for (int k = 0; k < i; ++k) x += CHIP_W[k] + 8;
-  return Box{ x, 98, CHIP_W[i], 40 };
+  for (int i = 0; i < N_DUR; ++i) {
+    CHIP_BOX[i] = Box{ x, 98, CHIP_W[i], 40 };
+    x += CHIP_W[i] + 8;
+  }
 }
 
 // ---------------- non-blocking sound & haptics ----------------
@@ -175,7 +182,7 @@ void drawHome() {
   canvas.drawString("coherent breathing - 5.5s in / 5.5s out", 160, 78);
 
   for (int i = 0; i < N_DUR; ++i) {
-    Box b = chipBox(i);
+    const Box& b = CHIP_BOX[i];
     bool sel = (i == durIdx);
     if (sel) canvas.fillRoundRect(b.x, b.y, b.w, b.h, 10, COL_INHALE);
     else     canvas.drawRoundRect(b.x, b.y, b.w, b.h, 10, COL_FAINT);
@@ -405,7 +412,7 @@ void tickRun() {
 // ---------------- touch routing ----------------
 void homeTouch(int x, int y) {
   for (int i = 0; i < N_DUR; ++i) {
-    if (chipBox(i).hit(x, y)) {
+    if (CHIP_BOX[i].hit(x, y)) {
       durIdx = i;
       savePrefs();
       if (soundOn) M5.Speaker.tone(660, 30);
@@ -425,6 +432,8 @@ void setup() {
   M5.Display.setRotation(1);
   M5.Display.setBrightness(BRIGHT_UI);
   M5.Speaker.setVolume(100);
+
+  initChipBoxes();
 
   prefs.begin("breathe", false);
   durIdx   = prefs.getInt("dur", 2);
